@@ -8,14 +8,16 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+
 import java.util.List;
 
 @Repository
 public interface PurchaseOrderDetailRepository extends JpaRepository<PurchaseOrderDetail, Integer> {
     List<PurchaseOrderDetail> findByPurchaseOrderHeaderId(Integer pohId);
-
-    @Transactional
+    void deleteAllByPurchaseOrderHeaderId(Integer pohId);
     @Modifying
-    @Query("DELETE FROM PurchaseOrderDetail p WHERE p.purchaseOrderHeader.id = :pohId")
-    void deleteByPohId(@Param("pohId") Integer pohId);
+    @Transactional
+    @Query("DELETE FROM PurchaseOrderDetail pod WHERE pod.purchaseOrderHeader.id = :pohId")
+    void deleteByPurchaseOrderHeaderId(@Param("pohId") Integer pohId);
+    
     }

@@ -1,12 +1,10 @@
 package com.backend.purchaseorder.entity;
 
-import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import lombok.ToString;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -24,9 +22,8 @@ public class PurchaseOrderDetail {
 
     @ManyToOne
     @JoinColumn(name = "poh_id", nullable = false)
-    @JsonBackReference
-    @ToString.Exclude
     private PurchaseOrderHeader purchaseOrderHeader;
+
 
     @NotNull(message = "Item ID cannot be null")
     @Column(name = "item_id")

@@ -4,13 +4,22 @@ import com.backend.purchaseorder.dto.po.PurchaseOrderDetailDTO;
 import com.backend.purchaseorder.dto.po.PurchaseOrderHeaderDTO;
 import com.backend.purchaseorder.entity.PurchaseOrderDetail;
 import com.backend.purchaseorder.entity.PurchaseOrderHeader;
+import com.backend.purchaseorder.entity.Item;
+import com.backend.purchaseorder.repository.ItemRepository;
 import com.backend.purchaseorder.repository.PurchaseOrderDetailRepository;
 import com.backend.purchaseorder.repository.PurchaseOrderHeaderRepository;
+
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.time.LocalDateTime;
+
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -19,99 +28,131 @@ public class PurchaseOrderService {
 
     private final PurchaseOrderHeaderRepository poHRepository;
     private final PurchaseOrderDetailRepository poDRepository;
+    private final ItemRepository itemRepository;
 
-    public PurchaseOrderService(PurchaseOrderHeaderRepository poHRepository,
-            PurchaseOrderDetailRepository poDRepository) {
+    public PurchaseOrderService(PurchaseOrderHeaderRepository poHRepository, PurchaseOrderDetailRepository poDRepository, ItemRepository itemRepository) {
         this.poHRepository = poHRepository;
         this.poDRepository = poDRepository;
+        this.itemRepository = itemRepository;
     }
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    @Transactional
     public List<PurchaseOrderHeaderDTO> getAllPOs() {
-        return poHRepository.findAll().stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
-    }
-
-    public Optional<PurchaseOrderHeaderDTO> getPOById(Integer id) {
-        return poHRepository.findById(id)
-                .map(this::convertToDTO);
+        List<PurchaseOrderHeader> poHeaders = poHRepository.findAll();
+        return poHeaders.stream().map(this::convertToDTO).collect(Collectors.toList());
     }
 
     @Transactional
-    public PurchaseOrderHeaderDTO savePO(PurchaseOrderHeaderDTO dto) {
+    public Optional<PurchaseOrderHeaderDTO> getPOById(int id) {
+        return poHRepository.findById(id).map(this::convertToDTO);
+    }
+
+    @Transactional
+    public PurchaseOrderHeaderDTO savePO(PurchaseOrderHeaderDTO poHDTO) {
         PurchaseOrderHeader poH = new PurchaseOrderHeader();
-        poH.setCreatedBy(dto.getCreatedBy());
-        poH.setUpdatedBy(dto.getUpdatedBy());
-        poH.setDatetime(LocalDateTime.now()); // Set the datetime field
-        poH.setCreatedDatetime(LocalDateTime.now()); // Set the created_datetime field
-        poH.setDescription(dto.getDescription()); // Set the description field
+        poH.setCreatedDatetime(LocalDateTime.now());
+        poH.setDatetime(LocalDateTime.now());
+        poH.setCreatedBy(poHDTO.getCreatedBy());
+        poH.setUpdatedBy(poHDTO.getCreatedBy());
+        poH.setDescription(poHDTO.getDescription());
+        poH.setTotalCost(BigDecimal.ZERO);
+        poH.setTotalPrice(BigDecimal.ZERO);
 
-        List<PurchaseOrderDetail> details = dto.getPoDetails().stream().map(detail -> {
-            PurchaseOrderDetail poD = new PurchaseOrderDetail();
-            poD.setItemId(detail.getItemId());
-            poD.setItemQty(detail.getItemQty());
-            poD.setItemCost(detail.getItemCost());
-            poD.setItemPrice(detail.getItemPrice());
-            poD.setCreatedDatetime(LocalDateTime.now()); // Set the created_datetime field
-            poD.setPurchaseOrderHeader(poH);
-            return poD;
-        }).collect(Collectors.toList());
+        final PurchaseOrderHeader savedPoH = poHRepository.save(poH);
 
-        poH.setDetails(details);
+        Map<Integer, Integer> itemQuantityMap = new HashMap<>();
+        if (poHDTO.getPoDetails() != null) {
+            for (PurchaseOrderDetailDTO dto : poHDTO.getPoDetails()) {
+                itemQuantityMap.put(dto.getItemId(), itemQuantityMap.getOrDefault(dto.getItemId(), 0) + dto.getItemQty());
+            }
+        }
 
-        // Calculate total cost and total price
-        double totalCost = details.stream().mapToDouble(d -> d.getItemQty() * d.getItemCost().doubleValue()).sum();
-        double totalPrice = details.stream().mapToDouble(d -> d.getItemQty() * d.getItemPrice().doubleValue()).sum();
+        List<PurchaseOrderDetail> poDetails = itemQuantityMap.entrySet().stream()
+            .map(entry -> {
+                PurchaseOrderDetail detail = new PurchaseOrderDetail();
+                detail.setItemId(entry.getKey());
+                detail.setItemQty(entry.getValue());
 
-        poH.setTotalCost(BigDecimal.valueOf(totalCost));
-        poH.setTotalPrice(BigDecimal.valueOf(totalPrice));
+                Item item = itemRepository.findById(entry.getKey())
+                    .orElseThrow(() -> new RuntimeException("Item not found"));
+                detail.setItemPrice(BigDecimal.valueOf(item.getPrice()));
+                detail.setItemCost(BigDecimal.valueOf(item.getCost()));
 
-        return convertToDTO(poHRepository.save(poH));
+                detail.setPurchaseOrderHeader(savedPoH);
+                return detail;
+            })
+            .collect(Collectors.toList());
+
+        poDRepository.saveAll(poDetails);
+        savedPoH.setDetails(poDetails);
+
+        BigDecimal totalCost = poDetails.stream()
+            .map(detail -> detail.getItemCost().multiply(BigDecimal.valueOf(detail.getItemQty())))
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal totalPrice = poDetails.stream()
+            .map(detail -> detail.getItemPrice().multiply(BigDecimal.valueOf(detail.getItemQty())))
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        savedPoH.setTotalCost(totalCost);
+        savedPoH.setTotalPrice(totalPrice);
+        poHRepository.save(savedPoH);
+
+        return convertToDTO(savedPoH);
     }
 
     @Transactional
-    public Optional<PurchaseOrderHeaderDTO> updatePO(Integer id, PurchaseOrderHeaderDTO dto) {
+    public Optional<PurchaseOrderHeaderDTO> updatePO(int id, PurchaseOrderHeaderDTO poHDTO) {
         return poHRepository.findById(id).map(poH -> {
-            poH.setUpdatedBy(dto.getUpdatedBy());
+            poH.setUpdatedBy(poHDTO.getUpdatedBy());
+            poH.setDescription(poHDTO.getDescription());
             poH.setDatetime(LocalDateTime.now());
-            poH.setUpdatedDatetime(LocalDateTime.now()); // Set the updated_datetime field
-            poH.setDescription(dto.getDescription()); // Set the description field
 
-            // Add new details without clearing existing ones
-            List<PurchaseOrderDetail> existingDetails = poH.getDetails();
-            List<PurchaseOrderDetail> newDetails = dto.getPoDetails().stream().map(detail -> {
-                PurchaseOrderDetail poD;
-                if (detail.getId() != null) {
-                    poD = poDRepository.findById(detail.getId()).orElse(new PurchaseOrderDetail());
-                } else {
-                    poD = new PurchaseOrderDetail();
-                }
-                poD.setItemId(detail.getItemId());
-                poD.setItemQty(detail.getItemQty());
-                poD.setItemCost(detail.getItemCost());
-                poD.setItemPrice(detail.getItemPrice());
-                poD.setCreatedDatetime(LocalDateTime.now()); // Set the created_datetime field
-                poD.setPurchaseOrderHeader(poH);
-                return poD;
-            }).collect(Collectors.toList());
+            Map<Integer, Integer> itemQuantityMap = new HashMap<>();
+            for (PurchaseOrderDetailDTO dto : poHDTO.getPoDetails()) {
+                itemQuantityMap.put(dto.getItemId(), itemQuantityMap.getOrDefault(dto.getItemId(), 0) + dto.getItemQty());
+            }
 
-            existingDetails.addAll(newDetails);
+            poH.getDetails().clear();
 
-            // Calculate total cost and total price
-            double totalCost = existingDetails.stream().mapToDouble(d -> d.getItemQty() * d.getItemCost().doubleValue()).sum();
-            double totalPrice = existingDetails.stream().mapToDouble(d -> d.getItemQty() * d.getItemPrice().doubleValue()).sum();
+            itemQuantityMap.forEach((itemId, quantity) -> {
+                PurchaseOrderDetail detail = new PurchaseOrderDetail();
+                detail.setPurchaseOrderHeader(poH);
+                detail.setItemId(itemId);
+                detail.setItemQty(quantity);
 
-            poH.setTotalCost(BigDecimal.valueOf(totalCost));
-            poH.setTotalPrice(BigDecimal.valueOf(totalPrice));
+                Item item = itemRepository.findById(itemId)
+                    .orElseThrow(() -> new RuntimeException("Item not found"));
+                detail.setItemPrice(BigDecimal.valueOf(item.getPrice()));
+                detail.setItemCost(BigDecimal.valueOf(item.getCost()));
 
-            return convertToDTO(poHRepository.save(poH));
+                poH.getDetails().add(detail);
+            });
+
+            BigDecimal totalPrice = poH.getDetails().stream()
+                .map(detail -> detail.getItemPrice().multiply(BigDecimal.valueOf(detail.getItemQty())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            BigDecimal totalCost = poH.getDetails().stream()
+                .map(detail -> detail.getItemCost().multiply(BigDecimal.valueOf(detail.getItemQty())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            poH.setTotalPrice(totalPrice);
+            poH.setTotalCost(totalCost);
+
+            poHRepository.save(poH);
+
+            return convertToDTO(poH);
         });
     }
 
     @Transactional
-    public boolean deletePO(Integer id) {
+    public boolean deletePO(int id) {
         if (poHRepository.existsById(id)) {
-            poDRepository.deleteByPohId(id);
+            poDRepository.deleteAllByPurchaseOrderHeaderId(id);
             poHRepository.deleteById(id);
             return true;
         }
@@ -127,46 +168,21 @@ public class PurchaseOrderService {
         poHDTO.setTotalCost(poH.getTotalCost());
         poHDTO.setCreatedBy(poH.getCreatedBy());
         poHDTO.setUpdatedBy(poH.getUpdatedBy());
-        poHDTO.setPoDetails(poDRepository.findByPurchaseOrderHeaderId(poH.getId()).stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList()));
+
+        List<PurchaseOrderDetailDTO> detailDTOs = poH.getDetails().stream()
+            .map(detail -> {
+                PurchaseOrderDetailDTO detailDTO = new PurchaseOrderDetailDTO();
+                detailDTO.setId(detail.getId());
+                detailDTO.setPohId(detail.getPurchaseOrderHeader().getId());
+                detailDTO.setItemId(detail.getItemId());
+                detailDTO.setItemQty(detail.getItemQty());
+                detailDTO.setItemCost(detail.getItemCost());
+                detailDTO.setItemPrice(detail.getItemPrice());
+                return detailDTO;
+            })
+            .collect(Collectors.toList());
+
+        poHDTO.setPoDetails(detailDTOs);
         return poHDTO;
-    }
-
-    private PurchaseOrderDetailDTO convertToDTO(PurchaseOrderDetail poD) {
-        PurchaseOrderDetailDTO poDDTO = new PurchaseOrderDetailDTO();
-        poDDTO.setId(poD.getId());
-        poDDTO.setPohId(poD.getPurchaseOrderHeader().getId()); // Set the pohId field
-        poDDTO.setItemId(poD.getItemId());
-        poDDTO.setItemQty(poD.getItemQty());
-        poDDTO.setItemCost(poD.getItemCost());
-        poDDTO.setItemPrice(poD.getItemPrice());
-        return poDDTO;
-    }
-
-    private PurchaseOrderHeader convertToEntity(PurchaseOrderHeaderDTO poHDTO) {
-        PurchaseOrderHeader poH = new PurchaseOrderHeader();
-        poH.setId(poHDTO.getId());
-        poH.setDatetime(poHDTO.getDatetime());
-        poH.setDescription(poHDTO.getDescription());
-        poH.setTotalPrice(poHDTO.getTotalPrice());
-        poH.setTotalCost(poHDTO.getTotalCost());
-        poH.setCreatedBy(poHDTO.getCreatedBy());
-        poH.setUpdatedBy(poHDTO.getUpdatedBy());
-        return poH;
-    }
-
-    private PurchaseOrderDetail convertToEntity(PurchaseOrderDetailDTO poDDTO) {
-        PurchaseOrderDetail poD = new PurchaseOrderDetail();
-        poD.setId(poDDTO.getId());
-        poD.setItemId(poDDTO.getItemId());
-        poD.setItemQty(poDDTO.getItemQty());
-        poD.setItemCost(poDDTO.getItemCost());
-        poD.setItemPrice(poDDTO.getItemPrice());
-        poD.setCreatedDatetime(LocalDateTime.now()); // Set the created_datetime field
-        PurchaseOrderHeader poH = new PurchaseOrderHeader();
-        poH.setId(poDDTO.getPohId());
-        poD.setPurchaseOrderHeader(poH);
-        return poD;
     }
 }

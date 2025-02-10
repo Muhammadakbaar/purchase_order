@@ -25,12 +25,15 @@ public class PurchaseOrderDetailDTO {
     @NotNull(message = "Item ID cannot be null")
     private Integer itemId;
 
+    @NotNull(message = "Quantity cannot be null")
     @Min(value = 1, message = "Quantity must be at least 1")
     private Integer itemQty;
 
+    @NotNull(message = "Cost cannot be null")
     @Min(value = 0, message = "Cost cannot be negative")
     private BigDecimal itemCost;
 
+    @NotNull(message = "Price cannot be null")
     @Min(value = 0, message = "Price cannot be negative")
     private BigDecimal itemPrice;
 
