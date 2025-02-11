@@ -116,21 +116,31 @@ public class PurchaseOrderService {
                 itemQuantityMap.put(dto.getItemId(), itemQuantityMap.getOrDefault(dto.getItemId(), 0) + dto.getItemQty());
             }
 
-            poH.getDetails().clear();
+            for (Map.Entry<Integer, Integer> entry : itemQuantityMap.entrySet()) {
+                Integer itemId = entry.getKey();
+                Integer quantity = entry.getValue();
 
-            itemQuantityMap.forEach((itemId, quantity) -> {
-                PurchaseOrderDetail detail = new PurchaseOrderDetail();
-                detail.setPurchaseOrderHeader(poH);
-                detail.setItemId(itemId);
-                detail.setItemQty(quantity);
+                Optional<PurchaseOrderDetail> existingDetail = poH.getDetails().stream()
+                    .filter(detail -> detail.getItemId().equals(itemId))
+                    .findFirst();
 
-                Item item = itemRepository.findById(itemId)
-                    .orElseThrow(() -> new RuntimeException("Item not found"));
-                detail.setItemPrice(BigDecimal.valueOf(item.getPrice()));
-                detail.setItemCost(BigDecimal.valueOf(item.getCost()));
+                if (existingDetail.isPresent()) {
+                    PurchaseOrderDetail detail = existingDetail.get();
+                    detail.setItemQty(quantity);
+                } else {
+                    PurchaseOrderDetail detail = new PurchaseOrderDetail();
+                    detail.setItemId(itemId);
+                    detail.setItemQty(quantity);
 
-                poH.getDetails().add(detail);
-            });
+                    Item item = itemRepository.findById(itemId)
+                        .orElseThrow(() -> new RuntimeException("Item not found"));
+                    detail.setItemPrice(BigDecimal.valueOf(item.getPrice()));
+                    detail.setItemCost(BigDecimal.valueOf(item.getCost()));
+
+                    detail.setPurchaseOrderHeader(poH);
+                    poH.getDetails().add(detail);
+                }
+            }
 
             BigDecimal totalPrice = poH.getDetails().stream()
                 .map(detail -> detail.getItemPrice().multiply(BigDecimal.valueOf(detail.getItemQty())))
