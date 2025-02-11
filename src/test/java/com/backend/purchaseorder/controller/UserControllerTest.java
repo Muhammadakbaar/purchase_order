@@ -18,6 +18,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 
 public class UserControllerTest {
 
@@ -36,83 +39,117 @@ public class UserControllerTest {
     }
 
     @Test
-    public void testGetAllUsers() {
+    public void testGetAllUsers() throws Exception {
         List<UserDTO> users = Arrays.asList(new UserDTO(), new UserDTO());
         when(userService.getAllUsers()).thenReturn(users);
 
-        ResponseEntity<List<UserDTO>> response = userController.getAllUsers();
+        mockMvc.perform(get("/users"))
+                .andExpect(status().isOk());
 
+        ResponseEntity<List<UserDTO>> response = userController.getAllUsers();
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals(users, response.getBody());
     }
 
     @Test
-    public void testGetUserById() {
+    public void testGetUserById() throws Exception {
         UserDTO user = new UserDTO();
         when(userService.getUserById(anyInt())).thenReturn(Optional.of(user));
 
-        ResponseEntity<UserDTO> response = userController.getUserById(1);
+        mockMvc.perform(get("/users/1"))
+                .andExpect(status().isOk());
 
+        ResponseEntity<UserDTO> response = userController.getUserById(1);
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals(user, response.getBody());
     }
 
     @Test
-    public void testGetUserByIdNotFound() {
+    public void testGetUserByIdNotFound() throws Exception {
         when(userService.getUserById(anyInt())).thenReturn(Optional.empty());
 
+        mockMvc.perform(get("/users/1"))
+                .andExpect(status().isNotFound());
+
         ResponseEntity<UserDTO> response = userController.getUserById(1);
-
         assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
     }
 
     @Test
-    public void testCreateUser() {
-        UserDTO user = new UserDTO();
-        when(userService.createUser(any(UserDTO.class))).thenReturn(user);
+public void testCreateUser() throws Exception {
+    UserDTO user = new UserDTO();
+    user.setFirstName("John");
+    user.setLastName("Doe");
+    user.setEmail("test@example.com");
+    user.setPhone("1234567890");
+    user.setCreatedBy("admin");
+    user.setUpdatedBy("admin");
 
-        ResponseEntity<UserDTO> response = userController.createUser(user);
+    when(userService.createUser(any(UserDTO.class))).thenReturn(user);
 
-        assertEquals(HttpStatus.CREATED, response.getStatusCode());
-        assertEquals(user, response.getBody());
-    }
+    mockMvc.perform(post("/users")
+            .contentType("application/json")
+            .content("{\"firstName\":\"John\",\"lastName\":\"Doe\",\"email\":\"test@example.com\",\"phone\":\"1234567890\",\"createdBy\":\"admin\",\"updatedBy\":\"admin\"}"))
+            .andExpect(status().isCreated());
+
+    ResponseEntity<UserDTO> response = userController.createUser(user);
+    assertEquals(HttpStatus.CREATED, response.getStatusCode());
+    assertEquals(user, response.getBody());
+}
+@Test
+public void testUpdateUser() throws Exception {
+    UserDTO user = new UserDTO();
+    user.setFirstName("John");
+    user.setLastName("Doe");
+    user.setEmail("updated@example.com");
+    user.setPhone("1234567890");
+    user.setCreatedBy("admin");
+    user.setUpdatedBy("admin");
+
+    when(userService.updateUser(anyInt(), any(UserDTO.class))).thenReturn(Optional.of(user));
+
+    mockMvc.perform(put("/users/1")
+            .contentType("application/json")
+            .content("{\"firstName\":\"John\",\"lastName\":\"Doe\",\"email\":\"updated@example.com\",\"phone\":\"1234567890\",\"createdBy\":\"admin\",\"updatedBy\":\"admin\"}"))
+            .andExpect(status().isOk());
+
+    ResponseEntity<UserDTO> response = userController.updateUser(1, user);
+    assertEquals(HttpStatus.OK, response.getStatusCode());
+    assertEquals(user, response.getBody());
+}
+
+@Test
+public void testUpdateUserNotFound() throws Exception {
+    when(userService.updateUser(anyInt(), any(UserDTO.class))).thenReturn(Optional.empty());
+
+    mockMvc.perform(put("/users/1")
+            .contentType("application/json")
+            .content("{\"firstName\":\"John\",\"lastName\":\"Doe\",\"email\":\"updated@example.com\",\"phone\":\"1234567890\",\"createdBy\":\"admin\",\"updatedBy\":\"admin\"}"))
+            .andExpect(status().isNotFound());
+
+    ResponseEntity<UserDTO> response = userController.updateUser(1, new UserDTO());
+    assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
+}
 
     @Test
-    public void testUpdateUser() {
-        UserDTO user = new UserDTO();
-        when(userService.updateUser(anyInt(), any(UserDTO.class))).thenReturn(Optional.of(user));
-
-        ResponseEntity<UserDTO> response = userController.updateUser(1, user);
-
-        assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertEquals(user, response.getBody());
-    }
-
-    @Test
-    public void testUpdateUserNotFound() {
-        UserDTO user = new UserDTO();
-        when(userService.updateUser(anyInt(), any(UserDTO.class))).thenReturn(Optional.empty());
-
-        ResponseEntity<UserDTO> response = userController.updateUser(1, user);
-
-        assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
-    }
-
-    @Test
-    public void testDeleteUser() {
+    public void testDeleteUser() throws Exception {
         when(userService.deleteUser(anyInt())).thenReturn(true);
 
-        ResponseEntity<Void> response = userController.deleteUser(1);
+        mockMvc.perform(delete("/users/1"))
+                .andExpect(status().isNoContent());
 
+        ResponseEntity<Void> response = userController.deleteUser(1);
         assertEquals(HttpStatus.NO_CONTENT, response.getStatusCode());
     }
 
     @Test
-    public void testDeleteUserNotFound() {
+    public void testDeleteUserNotFound() throws Exception {
         when(userService.deleteUser(anyInt())).thenReturn(false);
 
-        ResponseEntity<Void> response = userController.deleteUser(1);
+        mockMvc.perform(delete("/users/1"))
+                .andExpect(status().isNotFound());
 
+        ResponseEntity<Void> response = userController.deleteUser(1);
         assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
     }
 }

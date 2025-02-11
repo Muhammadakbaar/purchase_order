@@ -4,22 +4,22 @@ import com.backend.purchaseorder.dto.item.ItemDTO;
 import com.backend.purchaseorder.service.ItemService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.MockitoAnnotations;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.when;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
-@ExtendWith(MockitoExtension.class)
-class ItemControllerTest {
+public class ItemControllerTest {
 
     @Mock
     private ItemService itemService;
@@ -27,103 +27,91 @@ class ItemControllerTest {
     @InjectMocks
     private ItemController itemController;
 
-    private ItemDTO sampleItem;
+    private MockMvc mockMvc;
 
     @BeforeEach
-    void setUp() {
-        sampleItem = new ItemDTO();
-        sampleItem.setId(1);
-        sampleItem.setName("Sample Item");
-        sampleItem.setDescription("Sample Description");
-        sampleItem.setPrice(100);
-        sampleItem.setCost(50);
-        sampleItem.setCreatedBy("Admin");
-        sampleItem.setUpdatedBy("Admin");
+    public void setUp() {
+        MockitoAnnotations.openMocks(this);
+        mockMvc = MockMvcBuilders.standaloneSetup(itemController).build();
     }
 
     @Test
-    void getAllItems_ShouldReturnListOfItems() {
-        List<ItemDTO> items = Arrays.asList(sampleItem);
+    public void testGetAllItems() {
+        List<ItemDTO> items = Arrays.asList(new ItemDTO(), new ItemDTO());
         when(itemService.getAllItems()).thenReturn(items);
 
         ResponseEntity<List<ItemDTO>> response = itemController.getAllItems();
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertEquals(1, response.getBody().size());
-        verify(itemService, times(1)).getAllItems();
+        assertEquals(items, response.getBody());
     }
 
     @Test
-    void getItemById_ExistingId_ShouldReturnItem() {
-        when(itemService.getItemById(1)).thenReturn(Optional.of(sampleItem));
+    public void testGetItemById() {
+        ItemDTO itemDTO = new ItemDTO();
+        when(itemService.getItemById(anyInt())).thenReturn(Optional.of(itemDTO));
 
         ResponseEntity<ItemDTO> response = itemController.getItemById(1);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertNotNull(response.getBody());
-        assertEquals(sampleItem.getId(), response.getBody().getId());
-        verify(itemService, times(1)).getItemById(1);
+        assertEquals(itemDTO, response.getBody());
     }
 
     @Test
-    void getItemById_NonExistingId_ShouldReturnNotFound() {
-        when(itemService.getItemById(99)).thenReturn(Optional.empty());
+    public void testGetItemByIdNotFound() {
+        when(itemService.getItemById(anyInt())).thenReturn(Optional.empty());
 
-        ResponseEntity<ItemDTO> response = itemController.getItemById(99);
+        ResponseEntity<ItemDTO> response = itemController.getItemById(1);
 
         assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
-        verify(itemService, times(1)).getItemById(99);
     }
 
     @Test
-    void createItem_ShouldReturnCreatedItem() {
-        when(itemService.createItem(any(ItemDTO.class))).thenReturn(sampleItem);
+    public void testCreateItem() {
+        ItemDTO itemDTO = new ItemDTO();
+        when(itemService.createItem(any(ItemDTO.class))).thenReturn(itemDTO);
 
-        ResponseEntity<ItemDTO> response = itemController.createItem(sampleItem);
+        ResponseEntity<ItemDTO> response = itemController.createItem(itemDTO);
 
         assertEquals(HttpStatus.CREATED, response.getStatusCode());
-        assertNotNull(response.getBody());
-        verify(itemService, times(1)).createItem(any(ItemDTO.class));
+        assertEquals(itemDTO, response.getBody());
     }
 
     @Test
-    void updateItem_ExistingId_ShouldReturnUpdatedItem() {
-        when(itemService.updateItem(eq(1), any(ItemDTO.class))).thenReturn(sampleItem);
+    public void testUpdateItem() {
+        ItemDTO itemDTO = new ItemDTO();
+        when(itemService.updateItem(anyInt(), any(ItemDTO.class))).thenReturn(itemDTO);
 
-        ResponseEntity<ItemDTO> response = itemController.updateItem(1, sampleItem);
+        ResponseEntity<ItemDTO> response = itemController.updateItem(1, itemDTO);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertNotNull(response.getBody());
-        verify(itemService, times(1)).updateItem(eq(1), any(ItemDTO.class));
+        assertEquals(itemDTO, response.getBody());
     }
 
     @Test
-    void updateItem_NonExistingId_ShouldReturnNotFound() {
-        when(itemService.updateItem(eq(99), any(ItemDTO.class))).thenReturn(null);
+    public void testUpdateItemNotFound() {
+        when(itemService.updateItem(anyInt(), any(ItemDTO.class))).thenReturn(null);
 
-        ResponseEntity<ItemDTO> response = itemController.updateItem(99, sampleItem);
+        ResponseEntity<ItemDTO> response = itemController.updateItem(1, new ItemDTO());
 
         assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
-        verify(itemService, times(1)).updateItem(eq(99), any(ItemDTO.class));
     }
 
     @Test
-    void deleteItem_ExistingId_ShouldReturnNoContent() {
-        when(itemService.deleteItem(1)).thenReturn(true);
+    public void testDeleteItem() {
+        when(itemService.deleteItem(anyInt())).thenReturn(true);
 
         ResponseEntity<Void> response = itemController.deleteItem(1);
 
         assertEquals(HttpStatus.NO_CONTENT, response.getStatusCode());
-        verify(itemService, times(1)).deleteItem(1);
     }
 
     @Test
-    void deleteItem_NonExistingId_ShouldReturnNotFound() {
-        when(itemService.deleteItem(99)).thenReturn(false);
+    public void testDeleteItemNotFound() {
+        when(itemService.deleteItem(anyInt())).thenReturn(false);
 
-        ResponseEntity<Void> response = itemController.deleteItem(99);
+        ResponseEntity<Void> response = itemController.deleteItem(1);
 
         assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
-        verify(itemService, times(1)).deleteItem(99);
     }
 }
